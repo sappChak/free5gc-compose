@@ -1,0 +1,17 @@
+interface_name: [eth0]
+xdp_attach_mode: generic # native mode is not functional at the moment
+api_address: :8081
+pfcp_address: :8805
+pfcp_node_id: upf.free5gc.org
+metrics_address: :9090
+n3_address: 10.100.200.36
+n9_address: 10.100.200.36
+# resize_ebpf_maps: true
+qer_map_size: 1024
+far_map_size: 1024
+pdr_map_size: 1024
+urr_map_size: 1024
+feature_ueip: false
+feature_ftup: false
+# ip_pool: 10.60.0.0/16
+teid_pool: 65535
