@@ -1,11 +1,43 @@
 services:
-  eupf:
-    container_name: eupf
+  i-eupf:
+    container_name: i-eupf
     image: ${EUPF_IMAGE:-ghcr.io/edgecomllc/eupf:main}
     privileged: true
     volumes:
       - /sys/fs/bpf:/sys/fs/bpf
-      - ./config/eupfcfg.yml:/config.yml
+      - ./config/ULCL/eupfcfg-i-upf.yaml:/config.yml
+      - ./eupf/entrypoint-i-upf.sh:/app/bin/entrypoint.sh
+    ulimits:
+      memlock: -1
+    environment:
+      GIN_MODE: release
+    cap_add:
+      - NET_ADMIN
+      - SYS_ADMIN
+      - CAP_NET_ADMIN
+      - CAP_BPF
+    ports:
+      - ${I_EUPF_PFCP_PORT}:8805/udp
+      - ${I_EUPF_API_PORT}:8081
+      - ${I_EUPF_METRICS_PORT}:9090
+    restart: unless-stopped
+    networks:
+      privnet:
+        ipv4_address: ${I_EUPF_IPV4_ADDRESS}
+        aliases:
+          - i-upf.free5gc.org
+    sysctls:
+      - net.ipv4.conf.all.forwarding=1
+    depends_on:
+      - psa-eupf
+
+  psa-eupf:
+    container_name: psa-eupf
+    image: ${EUPF_IMAGE:-ghcr.io/edgecomllc/eupf:main}
+    privileged: true
+    volumes:
+      - /sys/fs/bpf:/sys/fs/bpf
+      - ./config/ULCL/eupfcfg-psa-upf.yaml:/config.yml
       - ./eupf/entrypoint.sh:/app/bin/entrypoint.sh
     ulimits:
       memlock: -1
@@ -17,22 +49,22 @@ services:
       - CAP_NET_ADMIN
       - CAP_BPF
     ports:
-      - ${EUPF_PFCP_PORT}:8805/udp
-      - ${EUPF_API_PORT}:8081
-      - ${EUPF_METRICS_PORT}:9090
+      - ${PSA_EUPF_PFCP_PORT}:8805/udp
+      - ${PSA_EUPF_API_PORT}:8081
+      - ${PSA_EUPF_METRICS_PORT}:9090
     restart: unless-stopped
     networks:
       privnet:
-        ipv4_address: ${EUPF_IPV4_ADDRESS}
+        ipv4_address: ${PSA_EUPF_IPV4_ADDRESS}
         aliases:
-          - upf.free5gc.org
+          - psa-upf.free5gc.org
     sysctls:
       - net.ipv4.conf.all.forwarding=1
 
   db:
     container_name: mongodb
     image: ${MONGO_IMAGE:-mongo:4.4}
-    command: mongod --port 27017
+    command: mongod --port 27017 --quiet
     expose:
       - "27017"
     volumes:
@@ -74,7 +106,6 @@ services:
       GIN_MODE: release
     networks:
       privnet:
-        ipv4_address: ${AMF_IPV4_ADDRESS}
         aliases:
           - amf.free5gc.org
     depends_on:
@@ -141,8 +172,8 @@ services:
     expose:
       - "8000"
     volumes:
-      - ./config/smfcfg.yaml:/free5gc/config/smfcfg.yaml
-      - ./config/uerouting.yaml:/free5gc/config/uerouting.yaml
+      - ./config/ULCL/smfcfg.yaml:/free5gc/config/smfcfg.yaml
+      - ./config/ULCL/uerouting.yaml:/free5gc/config/uerouting.yaml
       - ./cert:/free5gc/cert
     environment:
       GIN_MODE: release
@@ -152,7 +183,8 @@ services:
           - smf.free5gc.org
     depends_on:
       - free5gc-nrf
-      - eupf
+      - i-eupf
+      - psa-eupf
 
   free5gc-udm:
     container_name: udm
@@ -238,6 +270,7 @@ services:
     image: free5gc/webui:${FREE5GC_IMAGE_TAG:-v4.2.3}
     command: ./webui -c ./config/webuicfg.yaml
     expose:
+      - "2122"
       - "2121"
     volumes:
       - ./config/webuicfg.yaml:/free5gc/config/webuicfg.yaml
@@ -256,12 +289,12 @@ services:
       - free5gc-nrf
 
   ueransim:
-    container_name: gnb
+    container_name: ueransim
     image: free5gc/ueransim:${FREE5GC_ADDITIONAL_IMAGE_TAG:-latest}
     command: ./nr-gnb -c ./config/gnbcfg.yaml
     volumes:
       - ./config/gnbcfg.yaml:/ueransim/config/gnbcfg.yaml
-      - ./config/uecfg.yaml:/ueransim/config/uecfg.yaml
+      - ./config/ULCL/uecfg-ulcl.yaml:/ueransim/config/uecfg.yaml
     cap_add:
       - NET_ADMIN
     devices:
@@ -272,24 +305,25 @@ services:
           - gnb.free5gc.org
     depends_on:
       - free5gc-amf
-      - eupf
+      - i-eupf
+      - psa-eupf
 
   ue:
-    container_name: ue
-    image: free5gc/ueransim:${FREE5GC_ADDITIONAL_IMAGE_TAG:-latest}
-    command: ./nr-ue -c ./config/uecfg.yaml
-    volumes:
-      - ./config/uecfg.yaml:/ueransim/config/uecfg.yaml
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - "/dev/net/tun"
-    networks:
-      privnet:
-        aliases:
-          - ue.free5gc.org
-    depends_on:
-      - ueransim
+   container_name: ue
+   image: free5gc/ueransim:latest
+   command: ./nr-ue -c ./config/uecfg.yaml
+   volumes:
+     - ./config/ULCL/uecfg-ulcl.yaml:/ueransim/config/uecfg.yaml
+   cap_add:
+     - NET_ADMIN
+   devices:
+     - "/dev/net/tun"
+   networks:
+     privnet:
+       aliases:
+         - ue.free5gc.org
+   depends_on:
+     - ueransim
 
 networks:
   privnet:
